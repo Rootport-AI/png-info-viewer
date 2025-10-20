@@ -8,7 +8,7 @@
 > AUTOMATIC1111 プロジェクトとは非公式・無関係です。
 
 ## デモ (GitHub Pages)
-- URL: （後で設定：`https://rootport-ai.github.io/png-info-viewer/`）
+- URL: `https://rootport-ai.github.io/png-info-viewer/`
 
 ## 使い方
 1. [index.html](./index.html) を開く（GitHub Pages のデモでもOK）
