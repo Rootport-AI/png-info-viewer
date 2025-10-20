@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<p>「ファイルを選択」または下のエリアへドラッグ＆ドロップすると、<code>tEXt</code> チャンクを解析して表示します。</p>
+<style>
+  body {
+    font-family: sans-serif;
+    margin: 20px;
+  }
+  #dropZone {
+    border: 2px dashed #666;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    color: #666;
+    margin-bottom: 20px;
+  }
+  #dropZone.dragover {
+    border-color: #0088ff;
+    color: #0088ff;
+    background-color: #f0f8ff;
+  }
+  #preview {
+    max-width: 300px;
+    display: block;
+    margin-bottom: 10px;
+  }
+  textarea {
+    width: 100%;
+    height: 500px; /* ← テキストエリアを広めに */
+  }
+  .hidden {
+    display: none;
+  }
+</style>
+
+<!-- ドラッグ＆ドロップ用エリア -->
+<div id="dropZone">ここにPNGファイルをドロップ</div>
+
+<!-- ファイル選択ボタン -->
+<p><input id="fileInput" accept="image/png" type="file" /><br /><br /></p>
+
+<!-- プレビュー画像 -->
+<p><img id="preview" alt="preview" class="hidden" /></p>
+
+<!-- 解析結果表示エリア -->
+<div id="infoArea" class="hidden" aria-live="polite">
+  <h3>抽出されたメタデータ (tEXt)</h3>
+  <label for="textKey">テキストチャンクのキー名：</label>
+  <input id="textKey" readonly="readonly" type="text" /><br /><br />
+  <label for="textValue">テキストチャンクの値：</label><br />
+  <textarea id="textValue" readonly="readonly"></textarea>
+</div>
+
+<script>
+  // --- PNG シグネチャ(先頭8バイト) ---
+  const PNG_SIGNATURE = new Uint8Array([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A]);
+
+  // tEXt チャンクを最小限だけ解析（複数ある場合は "parameters" を優先）
+  async function parseTextChunk(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer);
+
+    // シグネチャチェック
+    for (let i = 0; i < 8; i++) {
+      if (bytes[i] !== PNG_SIGNATURE[i]) {
+        throw new Error("Not a valid PNG file (signature mismatch).");
+      }
+    }
+
+    let offset = 8; // シグネチャの後から
+    const lengthOfFile = bytes.length;
+    let result = { key: "", text: "" };
+
+    while (offset < lengthOfFile) {
+      if (offset + 8 > lengthOfFile) break;
+
+      // (1) チャンク長さ (4 バイト, BE)
+      const length = (
+        (bytes[offset] << 24) |
+        (bytes[offset+1] << 16) |
+        (bytes[offset+2] << 8) |
+        (bytes[offset+3])
+      ) >>> 0;
+
+      // (2) チャンクタイプ (4 バイト)
+      const typeArray = bytes.subarray(offset + 4, offset + 8);
+      const chunkType = String.fromCharCode(...typeArray);
+
+      // データ部
+      const dataStart = offset + 8;
+      const dataEnd = dataStart + length;
+      if (dataEnd > lengthOfFile) break;
+
+      const chunkData = bytes.subarray(dataStart, dataEnd);
+
+      // CRC を読み飛ばす
+      const crcSectionEnd = dataEnd + 4;
+      if (crcSectionEnd > lengthOfFile) break;
+
+      // tEXt: [key]\0[value]
+      if (chunkType === "tEXt") {
+        const nullIndex = chunkData.indexOf(0);
+        if (nullIndex >= 0) {
+          const keyText = new TextDecoder().decode(chunkData.subarray(0, nullIndex));
+          const valueText = new TextDecoder().decode(chunkData.subarray(nullIndex + 1));
+          if (keyText === "parameters") {
+            result = { key: keyText, text: valueText };
+            break;
+          } else if (!result.key) {
+            result = { key: keyText, text: valueText };
+          }
+        }
+      }
+
+      // 次のチャンクへ
+      offset = crcSectionEnd;
+      if (chunkType === "IEND") break;
+    }
+    return result;
+  }
+
+  // ファイルを処理して結果を表示
+  async function handleFile(file) {
+    if (!file) return;
+
+    // 一部環境で file.type が空のことがあるため拡張子でも判定
+    const isPng = (file.type && file.type.includes("png")) || /\.png$/i.test(file.name || "");
+    if (!isPng) {
+      alert("PNGファイルではありません。");
+      return;
+    }
+
+    // 画像プレビュー（ObjectURLはonload後に解放）
+    const preview = document.getElementById('preview');
+    const url = URL.createObjectURL(file);
+    preview.onload = () => URL.revokeObjectURL(url);
+    preview.src = url;
+    preview.classList.remove('hidden');
+
+    // PNG解析
+    let arrayBuffer;
+    try {
+      arrayBuffer = await file.arrayBuffer();
+    } catch (err) {
+      alert("ファイル読み込みエラー: " + err.message);
+      return;
+    }
+
+    let meta;
+    try {
+      meta = await parseTextChunk(arrayBuffer);
+    } catch (err) {
+      alert("PNG解析エラー: " + err.message);
+      return;
+    }
+
+    // 表示
+    const infoArea = document.getElementById('infoArea');
+    const textKey = document.getElementById('textKey');
+    const textValue = document.getElementById('textValue');
+
+    textKey.value = meta.key;
+    textValue.value = meta.text;
+    infoArea.classList.remove('hidden');
+  }
+
+  // ファイル選択
+  const fileInput = document.getElementById('fileInput');
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    handleFile(file);
+  });
+
+  // ドラッグ＆ドロップ
+  const dropZone = document.getElementById('dropZone');
+  dropZone.addEventListener('dragenter', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragover',  (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', (e) => { dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) handleFile(files[0]);
+  });
+</script>
