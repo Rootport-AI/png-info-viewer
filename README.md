@@ -7,8 +7,9 @@
 > **WebUI とは完全に独立**しており、ブログ記事などに **そのまま埋め込んで使える**のが特徴です。  
 > AUTOMATIC1111 プロジェクトとは非公式・無関係です。
 
-## デモ (GitHub Pages)
-- URL: `https://rootport-ai.github.io/png-info-viewer/`
+## デモ (GitHub Pages およびブログ)
+- URL 1: https://rootport-ai.github.io/png-info-viewer/
+- URL 2: https://rootport.hateblo.jp/entry/2025/01/22/202706
 
 ## 使い方
 1. [index.html](./index.html) を開く（GitHub Pages のデモでもOK）
